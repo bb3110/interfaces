@@ -137,26 +137,546 @@ class: center, middle, inverse
 
 ---
 
-# Introduction to interfaces
+&lt;script type=&#34;text/javascript&#34;
+  src=&#34;https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML&#34;&gt;
+&lt;/script&gt;
+# Interfacing with Python
 
 ## Olav Vahtras
 
-KTH
+Computational Python
 
 ---
 
 layout: false
 
-## Slide
+## Interfaces
 
-- Hi
-- Ho
+### Interfacing codes
+
+This section deals with interfaces to running codes, binary files, and compiled modules
+
+* Automatically generated input files
+* Parameter studies
+* Interacting with files from external programs
+* Executing Fortran or C routines
 
 ---
 
-## Slide
+### Example
 
-- Write me
+Use a program (here Dalton) which solves the time-independent Schrödinger equation 
+
+$$H_0\Psi = E_0\Psi$$
+
+and estimate the energy change due to an external electric field.
+
+
+* Hamiltonian of a large part and a small perturbation
+
+$$ H=H_0 + \epsilon z $$
+
+$$ E=E[\epsilon] = \langle H\rangle $$
+
+* Finite difference approximation
+
+$$ \frac{dE}{d\epsilon} = \frac{E[\epsilon/2]+E[-\epsilon/2]}{\epsilon}$$
+
+
+---
+
+### Two input files
+
+    **DALTON               **DALTON
+    .RUN WAVE FUNCTION     .RUN WAVE FUNCTION
+    **INTEGRAL             **INTEGRAL
+    .DIPLEN                .DIPLEN
+    *WAVE FUNCTION         *WAVE FUNCTION
+    .HF                    .HF
+    *HAMILTONIAN           *HAMILTONIAN
+    .FIELD                 .FIELD
+    .0005                  -0.0005
+    ZDIPLEN                ZDIPLEN
+    **END OF INPUT         **END OF INPUT
+
+---
+
+### Run the two calculations
+
+```
+    $ grep Final.*energy *out
+    hf-_631g.out:   @ Final HF energy:              -7.897738141441                 
+    hf+_631g.out:   @ Final HF energy:              -7.897779862525                 
+```
+Calculate the finite difference energy (cut and paste)
+
+```
+    &gt;&gt;&gt; (-7.897779862525 - (-7.897738141441))/.001
+    -0.04172108400002372
+
+```
+
+---
+
+### The Python alternative
+
+Set up a Python function that 
+
+* creates input
+* executes the program
+* collects output
+ 
+
+#### Input
+
+Set up the input file as a triple quoted Python string.
+
+```
+&gt;&gt;&gt; input = &#34;&#34;&#34;**DALTON
+... .RUN WAVE FUNCTION
+... **WAVE FUNCTION
+... .HF
+... *HAMILTONIAN
+... .FIELD
+... %f
+... %s
+... **END OF INPUT
+... &#34;&#34;&#34;
+
+```
+
+
+---
+
+#### Function
+
+```
+&gt;&gt;&gt; import os, re
+
+&gt;&gt;&gt; def energy(strength=0, field=&#34;ZDIPLEN&#34;):
+...    inp = open(&#39;tmp.dal&#39;, &#39;w&#39;)
+...    inp.write(input%(strength, field))
+...    inp.close()
+...    os.system(&#39;dalton tmp 631g&#39;)
+...    out=open(&#39;tmp_631g.out&#39;, &#39;r&#39;)
+...    for line in out:
+...        if re.search(&#39;Final.*energy&#39;, line) is not None:
+...            e=float(line.split(&#39;:&#39;)[1])
+...            break
+...    return e
+
+```
+
+Energy difference in Python
+
+```
+    &gt;&gt;&gt; eps=0.001
+    &gt;&gt;&gt; print (energy(eps/2)-energy(-eps/2))/eps # doctest: +ELLIPSIS
+    -0.04172108...
+
+```
+
+#### Sum-up
+
+* The preceding illustrates the use of parameter studies
+* Input-file is set up as a triplet quoted string with formating code
+* Easy to set up input, execute and fetch output
+
+---
+
+### Other languages
+
+In order to read data from a binary file written by a C- or Fortran program special tools are 
+
+* Portability issues
+* Little endian/big endian
+* Compiler differences
+* C/Fortran differences
+
+### C/Fortran differences
+
+    #include &lt;stdio.h&gt;          |  double precision :: pi = 3.1415927d0
+    main() {                    |  open(1,&#39;ffile&#39;,format=&#39;unformatted&#39;)
+    FILE *fp;                   |  write(1) pi
+    double pi = 3.1415927;      |  close(1)
+    fp=fopen(&#34;cfile&#34;,&#34;wb&#34;);     |  end
+    fwrite(&amp;pi,sizeof(pi),1,fp);|
+    fclose(fp);                 |
+    }                           |
+
+---
+
+```
+    $ gcc a.c &amp;&amp; ./a.out
+    $ gfortran a.f &amp;&amp;  ./a.out
+    $ ls -l ?file
+    -rw-rw-r-- 1 olav olav  8 Oct  9 07:16 cfile
+    -rw-rw-r-- 1 olav olav 16 Oct  9 07:16 ffile
+```
+
+The C and Fortran program write the same data, but the resulting binary files have different size.
+
+---
+
+The unix command `od` (octal dump) can give information of binary files
+
+```
+    $ od -F cfile
+    0000000                3.1415927
+    0000010
+```
+--
+```
+    $ od -F ffile
+    0000000   8.344736732028587e+127        1.7506760985e-313
+    0000020
+```
+--
+
+```
+    $ od -D ffile
+    0000000          8 1518260631 1074340347          8
+    0000020
+```
+--
+```
+    $ od -F -j 4 ffile
+    0000004                3.1415927                   4e-323
+    0000020
+```
+--
+
+#### Summary
+
+* C binary files is a stream of bytes
+* Fortran binary files are composed of records
+* Each record is padded by an integer record length
+
+---
+
+### Binary files with Python
+
+* `struct` module used to translate c/fortran binary data to Python objects
+* `pack` function transforms Python data to c/fortran binary format
+* `unpack` function transforms c/fortran binary data to Python 
+
+
+### reading a Fortran record
+
+```
+&gt;&gt;&gt; from struct import calcsize, unpack
+&gt;&gt;&gt; from numpy import array
+
+&gt;&gt;&gt; def readrec(file, dataformat=&#39;d&#39;, intsize=4):
+...     datasize = calcsize(dataformat) # size of single element
+...     head = file.read(intsize)       # initial integer is record size 
+...     bytes = unpack(&#39;i&#39;,head)[0]     # convert to record size in bytes
+...     data = file.read(bytes)         # read in a string of bytes
+...     tail = file.read(intsize)       # the final integer
+...     assert head == tail             # check that record sizes match
+...     size = bytes/datasize           # size is number of elements
+...     start = 0                       # get start/stop address
+...     stop = calcsize(dataformat*size) 
+...     vec = unpack(dataformat*size,data[start:stop])
+...     return array(vec) # return data as numpy array
+
+```
+---
+
+```
+    &gt;&gt;&gt; # open Fortran binary
+    &gt;&gt;&gt; f=open(&#39;ffile&#39;,&#39;rb&#39;)
+    &gt;&gt;&gt; arrdata=readrec(f) 
+    &gt;&gt;&gt; print arrdata
+    [ 3.1415927]
+
+```
+    
+---
+
+#### Compiled modules
+
+* When Python is too slow
+* When algorithm prevents vectorization
+
+
+#### Example ``sin(x+y)``
+
+```
+    &gt;&gt;&gt; import math
+    &gt;&gt;&gt; def hw1(r1, r2):
+    ...     return math.sin(r1+r2)
+    &gt;&gt;&gt; print hw1(.1,.2)
+    0.295520206661
+
+```
+
+---
+
+#### In Fortran
+
+Suppose we want to evalute the function in fortran
+
+```fortran
+    # hw.f
+    double precision function hw1(r1, r2)
+    double precision r1, r2
+    hw1  = sin(r1+r2)
+    return
+    end
+```
+
+We now use the `f2py` command to generate a dynamically linked library Python can import
+
+```
+    $ f2py -c -m hw hw.f &gt; log
+    $ ls -lt hw.*
+    -rwxrwxr-x 1 olav olav 95954 Oct  9 08:06 hw.so
+    -rw-rw-r-- 1 olav olav   255 Oct  9 08:04 hw.f
+```
+
+In Python
+
+
+```
+    &gt;&gt;&gt; import hw
+    &gt;&gt;&gt; hw.hw1(.1, .2)
+    0.2955202066613396
+
+```
+
+---
+
+### Fortran subroutines
+
+In fortran input and output arguments to fortran subroutines can be in any order
+::
+
+    subroutine hw2(r1, r2, s)
+    double precision r1, r2, s
+    s=sin(r1, r2)
+    return
+    end
+
+---
+
+The Python convention is that arguments are input and return values are output:
+``s = hw2(r1,r2)``
+
+We can supply the subroutine with information
+ 
+```
+           subroutine hw2(r1, r2, s)
+           double precision r1, r2, s
+    Cf2py  intent(out) s
+           s=sin(r1, r2)
+           return
+           end
+```
+---
+
+Usage: function (hw1) and subroutine (hw2) versions
+
+```
+    &gt;&gt;&gt; import hw
+    &gt;&gt;&gt; print hw.hw1(.1,.2)
+    0.295520206661
+    &gt;&gt;&gt; print hw.hw2(.1,.2)
+    0.295520206661
+
+```
+---
+
+### C-functions
+ 
+```
+    // hw.c
+    include &lt;math.h&gt;
+    double hw3( double r1, double r2){
+    double s;
+    s=sin(r1+r2);
+    return s;}
+```
+
+#### Possiblities
+
+* use f2py here as well - must write a fortran style interface
+* ctypes module: compile as a shared library
+
+
+Need a fortran signature file
+
+```
+    $ cat signatures.f
+    real*8 function hw3(r1, r2)
+    Cf2py intent(c) hw3
+    real*8 r1, r2
+    Cf2py intent(c) r1, r2
+    end
+```
+---
+
+#### With f2y:generate header file
+
+```
+    $ f2py -m hw_c -h hw.pyf signatures.f
+    Reading fortran codes...
+    Post-processing...
+    Post-processing (stage 2)...
+    Saving signatures to file &#34;./hw.pyf&#34;
+```
+---
+
+```
+    $ cat hw.pyf
+    !    -*- f90 -*-
+    ! Note: the context of this file is case sensitive.
+
+    python module hw_c ! in 
+        interface  ! in :hw_c
+            function hw3(r1,r2) ! in :hw_c:signatures.f
+                intent(c) hw3
+                real*8 intent(c) :: r1
+                real*8 intent(c) :: r2
+                real*8 intent(c) :: hw3
+            end function hw3
+        end interface 
+    end python module hw_c
+```
+---
+
+#### Compile
+
+```
+    $ f2py -c hw.pyf hw.c &gt; log
+```
+    
+```
+    &gt;&gt;&gt; import hw_c
+    &gt;&gt;&gt; hw_c.hw3(.1, .2)
+    0.2955202066613396
+
+```
+
+
+
+---
+
+#### The ctypes module
+
+```
+    $ gcc -shared -fPIC -o hw_ctypes.so hw.c
+    $ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:.
+```
+py
+```
+    &gt;&gt;&gt; from ctypes import CDLL, c_double
+    &gt;&gt;&gt; hw_lib = CDLL(&#39;hw_ctypes.so&#39;)
+    &gt;&gt;&gt; hw_lib.hw3.restype = c_double
+    &gt;&gt;&gt; s = hw_lib.hw3(c_double(.1), c_double(.2))
+    &gt;&gt;&gt; print s, type(s)
+    0.295520206661 &lt;type &#39;float&#39;&gt;
+
+```
+
+---
+
+#### ctypes
+
+* allows calling shared libraries
+* no need to compile
+
+```
+    import ctypes 
+    import ctypes.util
+```
+
+```
+    #find path to libm.so
+    path_to_libm = ctypes.util.find_library(&#39;m&#39;)
+    #load library
+    libm = ctypes.cdll.LoadLibrary(path_to_libm)
+    #explain this
+    libm.cos.argtypes = [ctypes.c_double]
+    libm.cos.restype = ctypes.c_double
+
+    def cos_func(arg):
+        return libm.cos(arg)
+```
+
+---
+
+* test
+
+```
+    &gt;&gt;&gt; from cos_module import cos_func as cos
+    &gt;&gt;&gt; print cos(1.0)
+    0.540302305868
+
+```
+
+    
+---
+
+### cython
+
+* A Python-like language for C extensions
+* A compiler 
+
+```
+    #cdef extern from &#34;math.h&#34;:
+    #    double cos(double arg)
+    from libc.math cimport cos
+
+    def cos_func(arg):
+        return cos(arg)
+
+```
+
+---
+
+```
+    # setup.py
+    from distutils.core import setup, Extension
+    from Cython.Distutils import build_ext
+
+    setup(
+        cmdclass={&#39;build_ext&#39;:build_ext},
+        ext_modules=[Extension(&#34;cos_module&#34;, [&#34;cos_module.pyx&#34;])]
+    )
+
+```
+---
+
+* build
+
+```
+    $ python setup.py build_ext --inplace
+    ...
+    $ ls
+    build cos_module.c cos_module.pyx cos_module.so setup.py
+
+```
+
+* use
+
+```
+    &gt;&gt;&gt; from cos_module import cos_func as cos
+    &gt;&gt;&gt; cos(1.0)
+    0.540302305868
+
+```
+
+---
+
+
+#### Summary
+
+* Input files in the form of triple quotes strings convenient for parameter studies
+* The `struct` module has functions for processing binary files
+* Binary files from c- and Fortran programs have differnt structure (Fortran records)
+* To speed up Python code write a function in Fortran and compile it with ``f2py`` or use the ``ctypes`` module for C code
+-
     </textarea>
 
     <script src="/interfaces/refreeze/js/remark-latest.min.js" type="text/javascript"></script>
