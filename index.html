@@ -137,33 +137,44 @@ class: center, middle, inverse
 
 ---
 
+&lt;!-- 
+&gt;&gt;&gt; tmpdir = getfixture(&#39;tmpdir&#39;)
+
+--&gt;
+
+# Computational Python
+
 &lt;script type=&#34;text/javascript&#34;
   src=&#34;https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML&#34;&gt;
 &lt;/script&gt;
-# Interfacing with Python
 
-## Olav Vahtras
+## Interfacing with Python
 
-Computational Python
+### Olav Vahtras
 
 ---
 
 layout: false
 
-## Interfaces
+## Interfacing with Python
 
-### Interfacing codes
 
-This section deals with interfaces to running codes, binary files, and compiled modules
+### Interfacing with other codes
 
-* Automatically generated input files
-* Parameter studies
-* Interacting with files from external programs
-* Executing Fortran or C routines
+* Text files
+  - Automatic generation of input files (parameter studies)
+  - Getting data from output file
+* Binary files
+  - Getting data from binary files written by C and Fortran programs
+
+### Interfacing with other languages
+
+* Calling Fortran from Python
+* Calling C from Python
 
 ---
 
-### Example
+### Interfacing with other codes: Example
 
 Use a program (here Dalton) which solves the time-independent Schrödinger equation 
 
@@ -185,30 +196,33 @@ $$ \frac{dE}{d\epsilon} = \frac{E[\epsilon/2]+E[-\epsilon/2]}{\epsilon}$$
 
 ---
 
-### Two input files
+* Two input files
 
-    **DALTON               **DALTON
-    .RUN WAVE FUNCTION     .RUN WAVE FUNCTION
-    **INTEGRAL             **INTEGRAL
-    .DIPLEN                .DIPLEN
-    *WAVE FUNCTION         *WAVE FUNCTION
-    .HF                    .HF
-    *HAMILTONIAN           *HAMILTONIAN
-    .FIELD                 .FIELD
-    .0005                  -0.0005
-    ZDIPLEN                ZDIPLEN
-    **END OF INPUT         **END OF INPUT
+```
+***DALTON              **DALTON
+.RUN WAVE FUNCTION     .RUN WAVE FUNCTION
+**INTEGRAL             **INTEGRAL
+.DIPLEN                .DIPLEN
+*WAVE FUNCTION         *WAVE FUNCTION
+.HF                    .HF
+*HAMILTONIAN           *HAMILTONIAN
+.FIELD                 .FIELD
+.0005                  -0.0005
+ZDIPLEN                ZDIPLEN
+**END OF INPUT         **END OF INPUT
+```
 
----
+--
 
-### Run the two calculations
+* Run the two calculations
 
 ```
     $ grep Final.*energy *out
     hf-_631g.out:   @ Final HF energy:              -7.897738141441                 
     hf+_631g.out:   @ Final HF energy:              -7.897779862525                 
 ```
-Calculate the finite difference energy (cut and paste)
+--
+* Calculate the finite difference energy (cut and paste)
 
 ```
     &gt;&gt;&gt; (-7.897779862525 - (-7.897738141441))/.001
@@ -226,13 +240,14 @@ Set up a Python function that
 * executes the program
 * collects output
  
+---
 
 #### Input
 
 Set up the input file as a triple quoted Python string.
 
 ```
-&gt;&gt;&gt; input = &#34;&#34;&#34;**DALTON
+&gt;&gt;&gt; dalton_input = &#34;&#34;&#34;**DALTON
 ... .RUN WAVE FUNCTION
 ... **WAVE FUNCTION
 ... .HF
@@ -245,38 +260,122 @@ Set up the input file as a triple quoted Python string.
 
 ```
 
+```
+&gt;&gt;&gt; molecule_input = &#34;&#34;&#34;BASIS 
+... 6-31G
+... First title line --------------------------------------------------------------
+... Second title line--------------------------------------------------------------
+...    2    0
+...        3.    1   
+... A   0.0  0.0  -1.0
+...        1.    1 
+... B   0.0  0.0   1.0
+... &#34;&#34;&#34;
+
+```
+
 
 ---
 
-#### Function
+* Function
 
 ```
-&gt;&gt;&gt; import os, re
+&gt;&gt;&gt; import os, re, subprocess, tempfile
 
 &gt;&gt;&gt; def energy(strength=0, field=&#34;ZDIPLEN&#34;):
-...    inp = open(&#39;tmp.dal&#39;, &#39;w&#39;)
-...    inp.write(input%(strength, field))
-...    inp.close()
-...    os.system(&#39;dalton tmp 631g&#39;)
-...    out=open(&#39;tmp_631g.out&#39;, &#39;r&#39;)
-...    for line in out:
-...        if re.search(&#39;Final.*energy&#39;, line) is not None:
-...            e=float(line.split(&#39;:&#39;)[1])
-...            break
+...    #write input
+...    with open(&#34;%s/_%s-%s.dal&#34; % (tmpdir, strength, field), &#39;w&#39;) as dalinp:
+...        dalinp.write(dalton_input % (strength, field))
+...    with open(&#34;%s/%s.mol&#34; % (tmpdir, &#34;tmp&#34;), &#39;w&#39;) as inp:
+...        inp.write(molecule_input)
+...    # run program
+...    subprocess.call(
+...       &#34;chdir %s &amp;&amp; dalton _%s-%s tmp&#34; % (tmpdir, strength, field),
+...       stdout=tempfile.TemporaryFile(),
+...       stderr=tempfile.TemporaryFile(),
+...       shell=True
+...       )
+...    # fetch output
+...    with open(&#34;%s/_%s-%s_tmp.out&#34; % (tmpdir, strength, field), &#39;r&#39;) as dalout:
+...       for line in dalout:
+...           if re.search(&#39;Final.*energy&#39;, line) is not None:
+...               e=float(line.split(&#39;:&#39;)[1])
+...               break
 ...    return e
 
 ```
+
+--
 
 Energy difference in Python
 
 ```
     &gt;&gt;&gt; eps=0.001
-    &gt;&gt;&gt; print (energy(eps/2)-energy(-eps/2))/eps # doctest: +ELLIPSIS
+    &gt;&gt;&gt; print((energy(eps/2)-energy(-eps/2))/eps)                                 # doctest: +ELLIPSIS
     -0.04172108...
 
 ```
 
-#### Sum-up
+---
+Better still (too much in one function): split tasks to separate functions
+
+*  A write function
+
+```
+&gt;&gt;&gt; def write_input(strength, field):
+...    with open(&#34;%s/_%s-%s.dal&#34; % (tmpdir, strength, field), &#39;w&#39;) as dalinp:
+...        dalinp.write(dalton_input%(strength, field))
+...    with open(&#34;%s/%s.mol&#34; % (tmpdir, &#34;tmp&#34;), &#39;w&#39;) as molinp:
+...        molinp.write(molecule_input)
+
+```
+
+*  A run function
+
+```
+&gt;&gt;&gt; def  run_program(strength, field):
+...    subprocess.call(
+...       &#34;chdir %s &amp;&amp; dalton _%s-%s tmp&#34; % (tmpdir, strength, field),
+...       shell=True
+...       )
+
+```
+
+*  A read function
+
+```
+&gt;&gt;&gt; def  fetch_output(strength, field):
+...    with open(&#34;%s/_%s-%s_tmp.out&#34; % (tmpdir, strength, field), &#39;r&#39;) as dalout:
+...       for line in dalout:
+...           if re.search(&#39;Final.*energy&#39;, line) is not None:
+...               e=float(line.split(&#39;:&#39;)[1])
+...               break
+...    return e
+
+```
+
+---
+
+* Redefined `energy`
+
+
+```
+&gt;&gt;&gt; def energy(strength=0.0, field=&#34;ZDIPLEN&#34;):                                    #doctest: +ELLIPSIS
+...     write_input(strength, field)
+...     run_program(strength, field)
+...     return fetch_output(strength, field)
+
+```
+
+```
+    &gt;&gt;&gt; eps=0.001
+    &gt;&gt;&gt; print((energy(eps/2)-energy(-eps/2))/eps)                                 #doctest: +ELLIPSIS
+    -0.04172108...
+
+```
+--
+
+### Summary
 
 * The preceding illustrates the use of parameter studies
 * Input-file is set up as a triplet quoted string with formating code
@@ -284,7 +383,7 @@ Energy difference in Python
 
 ---
 
-### Other languages
+## Binary files
 
 In order to read data from a binary file written by a C- or Fortran program special tools are 
 
@@ -293,8 +392,11 @@ In order to read data from a binary file written by a C- or Fortran program spec
 * Compiler differences
 * C/Fortran differences
 
+---
+
 ### C/Fortran differences
 
+    # a.c                       |  ! a.f90
     #include &lt;stdio.h&gt;          |  double precision :: pi = 3.1415927d0
     main() {                    |  open(1,&#39;ffile&#39;,format=&#39;unformatted&#39;)
     FILE *fp;                   |  write(1) pi
@@ -304,15 +406,43 @@ In order to read data from a binary file written by a C- or Fortran program spec
     fclose(fp);                 |
     }                           |
 
----
+&lt;!--
+&gt;&gt;&gt; with open(&#34;a.c&#34;, &#34;w&#34;) as csource:
+...     csource.write(&#34;&#34;&#34;\
+... #include &lt;stdio.h&gt;
+... void main() {                    
+... FILE *fp;                   
+... double pi = 3.1415927;      
+... fp=fopen(&#34;cfile&#34;,&#34;wb&#34;);     
+... fwrite(&amp;pi,sizeof(pi),1,fp);
+... fclose(fp);                 
+... }&#34;&#34;&#34;
+...     )
+199
+&gt;&gt;&gt; with open(&#34;a.f90&#34;, &#34;w&#34;) as fsource:
+...    fsource.write(&#34;&#34;&#34;\
+... double precision :: pi = 3.1415927d0
+... open(1,file=&#39;ffile&#39;,form=&#39;unformatted&#39;)
+... write(1) pi
+... close(1)
+... end
+... &#34;&#34;&#34;
+... )
+102
+&gt;&gt;&gt; import subprocess
+&gt;&gt;&gt; subprocess.call(&#39;gcc a.c -o ac.x &amp;&amp; ./ac.x &amp;&amp; rm a.c&#39;, shell=True)
+0
+&gt;&gt;&gt; subprocess.call(&#39;gfortran a.f90 -o af.x &amp;&amp; ./af.x &amp;&amp; rm a.f90&#39;, shell=True)
+0
 
-```
+--&gt;
+
     $ gcc a.c &amp;&amp; ./a.out
-    $ gfortran a.f &amp;&amp;  ./a.out
+    $ gfortran a.f90 &amp;&amp;  ./a.out
     $ ls -l ?file
     -rw-rw-r-- 1 olav olav  8 Oct  9 07:16 cfile
     -rw-rw-r-- 1 olav olav 16 Oct  9 07:16 ffile
-```
+
 
 The C and Fortran program write the same data, but the resulting binary files have different size.
 
@@ -325,7 +455,9 @@ The unix command `od` (octal dump) can give information of binary files
     0000000                3.1415927
     0000010
 ```
+
 --
+
 ```
     $ od -F ffile
     0000000   8.344736732028587e+127        1.7506760985e-313
@@ -346,7 +478,7 @@ The unix command `od` (octal dump) can give information of binary files
 ```
 --
 
-#### Summary
+### Summary
 
 * C binary files is a stream of bytes
 * Fortran binary files are composed of records
@@ -374,7 +506,7 @@ The unix command `od` (octal dump) can give information of binary files
 ...     data = file.read(bytes)         # read in a string of bytes
 ...     tail = file.read(intsize)       # the final integer
 ...     assert head == tail             # check that record sizes match
-...     size = bytes/datasize           # size is number of elements
+...     size = bytes//datasize          # size is number of elements
 ...     start = 0                       # get start/stop address
 ...     stop = calcsize(dataformat*size) 
 ...     vec = unpack(dataformat*size,data[start:stop])
@@ -387,14 +519,14 @@ The unix command `od` (octal dump) can give information of binary files
     &gt;&gt;&gt; # open Fortran binary
     &gt;&gt;&gt; f=open(&#39;ffile&#39;,&#39;rb&#39;)
     &gt;&gt;&gt; arrdata=readrec(f) 
-    &gt;&gt;&gt; print arrdata
+    &gt;&gt;&gt; print(arrdata)
     [ 3.1415927]
 
 ```
     
 ---
 
-#### Compiled modules
+### Compiled modules
 
 * When Python is too slow
 * When algorithm prevents vectorization
@@ -406,8 +538,8 @@ The unix command `od` (octal dump) can give information of binary files
     &gt;&gt;&gt; import math
     &gt;&gt;&gt; def hw1(r1, r2):
     ...     return math.sin(r1+r2)
-    &gt;&gt;&gt; print hw1(.1,.2)
-    0.295520206661
+    &gt;&gt;&gt; print(hw1(.1,.2))
+    0.2955202066613396
 
 ```
 
@@ -425,6 +557,26 @@ Suppose we want to evalute the function in fortran
     return
     end
 ```
+&lt;!--
+&gt;&gt;&gt; with open(&#39;hw.f90&#39;, &#39;w&#39;) as hwf:
+...     hwf.write(&#34;&#34;&#34;\
+... # hw.f90
+... double precision function hw1(r1, r2)
+... double precision r1, r2
+... hw1  = sin(r1+r2)
+... return
+... end
+...
+... subroutine hw2(r1, r2, s)
+... double precision r1, r2, s
+... !f2py  intent(out) s
+... s=sin(r1, r2)
+... return
+... end
+... &#34;&#34;&#34;)
+100
+
+--&gt;
 
 We now use the `f2py` command to generate a dynamically linked library Python can import
 
@@ -435,13 +587,18 @@ We now use the `f2py` command to generate a dynamically linked library Python ca
     -rw-rw-r-- 1 olav olav   255 Oct  9 08:04 hw.f
 ```
 
+&lt;!--
+&gt;&gt;&gt; i = subprocess.call(&#39;f2py -c -m hw hw.f90&#39;, shell=True)
+
+--&gt;
+
 In Python
 
 
 ```
-    &gt;&gt;&gt; import hw
-    &gt;&gt;&gt; hw.hw1(.1, .2)
-    0.2955202066613396
+&gt;&gt;&gt; import hw
+&gt;&gt;&gt; hw.hw1(.1, .2)
+0.2955202066613396
 
 ```
 
@@ -450,7 +607,6 @@ In Python
 ### Fortran subroutines
 
 In fortran input and output arguments to fortran subroutines can be in any order
-::
 
     subroutine hw2(r1, r2, s)
     double precision r1, r2, s
@@ -473,16 +629,17 @@ We can supply the subroutine with information
            return
            end
 ```
+
 ---
 
 Usage: function (hw1) and subroutine (hw2) versions
 
 ```
     &gt;&gt;&gt; import hw
-    &gt;&gt;&gt; print hw.hw1(.1,.2)
-    0.295520206661
-    &gt;&gt;&gt; print hw.hw2(.1,.2)
-    0.295520206661
+    &gt;&gt;&gt; print(hw.hw1(.1,.2))
+    0.2955202066613396
+    &gt;&gt;&gt; print(hw.hw2(.1,.2))
+    0.2955202066613396
 
 ```
 ---
@@ -574,8 +731,8 @@ py
     &gt;&gt;&gt; hw_lib = CDLL(&#39;hw_ctypes.so&#39;)
     &gt;&gt;&gt; hw_lib.hw3.restype = c_double
     &gt;&gt;&gt; s = hw_lib.hw3(c_double(.1), c_double(.2))
-    &gt;&gt;&gt; print s, type(s)
-    0.295520206661 &lt;type &#39;float&#39;&gt;
+    &gt;&gt;&gt; print(s, type(s))
+    0.2955202066613396 &lt;class &#39;float&#39;&gt;
 
 ```
 
@@ -609,8 +766,8 @@ py
 * test
 
 ```
-    &gt;&gt;&gt; from cos_module import cos_func as cos
-    &gt;&gt;&gt; print cos(1.0)
+    &gt;&gt;&gt; from cos_module import cos_func as cos        #doctest: +SKIP
+    &gt;&gt;&gt; print cos(1.0)                                #doctest: +SKIP
     0.540302305868
 
 ```
@@ -661,8 +818,8 @@ py
 * use
 
 ```
-    &gt;&gt;&gt; from cos_module import cos_func as cos
-    &gt;&gt;&gt; cos(1.0)
+    &gt;&gt;&gt; from cos_module import cos_func as cos     #doctest: +SKIP
+    &gt;&gt;&gt; cos(1.0)                                   #doctest: +SKIP
     0.540302305868
 
 ```
