@@ -5,9 +5,9 @@
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 
     <style type="text/css">
-      @import url(http://fonts.googleapis.com/css?family=Droid+Serif);
-      @import url(http://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
-      @import url(http://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif);
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
 
       body {
         font-family: 'Droid Serif';
@@ -161,7 +161,9 @@ layout: false
 
 ### Interfacing with other codes
 
+&lt;font color=&#34;red&#34;&gt;
 * Text files
+&lt;/font&gt;
   - Automatic generation of input files (parameter studies)
   - Getting data from output file
 * Binary files
@@ -174,7 +176,9 @@ layout: false
 
 ---
 
-### Interfacing with other codes: Example
+## Interfacing with other codes
+
+### Text files: a manual example
 
 Use a program (here Dalton) which solves the time-independent Schrödinger equation 
 
@@ -183,13 +187,13 @@ $$H_0\Psi = E_0\Psi$$
 and estimate the energy change due to an external electric field.
 
 
-* Hamiltonian of a large part and a small perturbation
+* The Hamiltonian has a large part and a small perturbation
 
 $$ H=H_0 + \epsilon z $$
 
 $$ E=E[\epsilon] = \langle H\rangle $$
 
-* Finite difference approximation
+* Calculate the change using the finite difference approximation
 
 $$ \frac{dE}{d\epsilon} = \frac{E[\epsilon/2]+E[-\epsilon/2]}{\epsilon}$$
 
@@ -199,17 +203,17 @@ $$ \frac{dE}{d\epsilon} = \frac{E[\epsilon/2]+E[-\epsilon/2]}{\epsilon}$$
 * Two input files
 
 ```
-***DALTON              **DALTON
-.RUN WAVE FUNCTION     .RUN WAVE FUNCTION
-**INTEGRAL             **INTEGRAL
-.DIPLEN                .DIPLEN
-*WAVE FUNCTION         *WAVE FUNCTION
-.HF                    .HF
-*HAMILTONIAN           *HAMILTONIAN
-.FIELD                 .FIELD
-.0005                  -0.0005
-ZDIPLEN                ZDIPLEN
-**END OF INPUT         **END OF INPUT
+    **DALTON                         **DALTON
+    .RUN WAVE FUNCTION               .RUN WAVE FUNCTION
+    **INTEGRAL                       **INTEGRAL
+    .DIPLEN                          .DIPLEN
+    *WAVE FUNCTION                   *WAVE FUNCTION
+    .HF                              .HF
+    *HAMILTONIAN                     *HAMILTONIAN
+    .FIELD                           .FIELD
+    .0005                            -0.0005
+    ZDIPLEN                          ZDIPLEN
+    **END OF INPUT                   **END OF INPUT
 ```
 
 --
@@ -232,7 +236,7 @@ ZDIPLEN                ZDIPLEN
 
 ---
 
-### The Python alternative
+### Text files: same example automated
 
 Set up a Python function that 
 
@@ -242,7 +246,7 @@ Set up a Python function that
  
 ---
 
-#### Input
+* Parameterized input file
 
 Set up the input file as a triple quoted Python string.
 
@@ -260,7 +264,7 @@ Set up the input file as a triple quoted Python string.
 
 ```
 
-```
+&lt;!--
 &gt;&gt;&gt; molecule_input = &#34;&#34;&#34;BASIS 
 ... 6-31G
 ... First title line --------------------------------------------------------------
@@ -272,15 +276,31 @@ Set up the input file as a triple quoted Python string.
 ... B   0.0  0.0   1.0
 ... &#34;&#34;&#34;
 
-```
+--&gt;
 
+* The `%s` (string) and `%f` (float) are string control characters familiar for C programmers
+* This is a template that can generate input files for different fields types and strengths
+
+```
+&gt;&gt;&gt; print(dalton_input % (1.0, &#34;foobar&#34;))
+**DALTON
+.RUN WAVE FUNCTION
+**WAVE FUNCTION
+.HF
+*HAMILTONIAN
+.FIELD
+1.000000
+foobar
+**END OF INPUT
+
+```
 
 ---
 
-* Function
+* A single function to do it all
 
 ```
-&gt;&gt;&gt; import os, re, subprocess, tempfile
+&gt;&gt;&gt; import re, subprocess, tempfile
 
 &gt;&gt;&gt; def energy(strength=0, field=&#34;ZDIPLEN&#34;):
 ...    #write input
@@ -317,9 +337,9 @@ Energy difference in Python
 ```
 
 ---
-Better still (too much in one function): split tasks to separate functions
+Better still: split tasks to separate functions
 
-*  A write function
+*   A write function
 
 ```
 &gt;&gt;&gt; def write_input(strength, field):
@@ -341,7 +361,7 @@ Better still (too much in one function): split tasks to separate functions
 
 ```
 
-*  A read function
+*   A read function
 
 ```
 &gt;&gt;&gt; def  fetch_output(strength, field):
@@ -373,17 +393,32 @@ Better still (too much in one function): split tasks to separate functions
     -0.04172108...
 
 ```
---
+
+* Next step gradient function
+
+```
+&gt;&gt;&gt; def gradient(f, eps=0.001):
+...     return (f(eps/2) - f(-eps/2))/eps
+
+```
+
+```
+&gt;&gt;&gt; gradient(energy)                                                              #doctest: +ELLIPSIS
+-0.04172108...
+
+```
+
+---
 
 ### Summary
 
-* The preceding illustrates the use of parameter studies
+* The preceding examples illustrates the use of parameter studies
 * Input-file is set up as a triplet quoted string with formating code
 * Easy to set up input, execute and fetch output
 
 ---
 
-## Binary files
+### Binary files
 
 In order to read data from a binary file written by a C- or Fortran program special tools are 
 
@@ -430,10 +465,8 @@ In order to read data from a binary file written by a C- or Fortran program spec
 ... )
 102
 &gt;&gt;&gt; import subprocess
-&gt;&gt;&gt; subprocess.call(&#39;gcc a.c -o ac.x &amp;&amp; ./ac.x &amp;&amp; rm a.c&#39;, shell=True)
-0
-&gt;&gt;&gt; subprocess.call(&#39;gfortran a.f90 -o af.x &amp;&amp; ./af.x &amp;&amp; rm a.f90&#39;, shell=True)
-0
+&gt;&gt;&gt; _ = subprocess.call(&#39;gcc a.c -o ac.x &amp;&amp; ./ac.x &amp;&amp; rm a.c&#39;, shell=True)
+&gt;&gt;&gt; _ = subprocess.call(&#39;gfortran a.f90 -o af.x &amp;&amp; ./af.x &amp;&amp; rm a.f90&#39;, shell=True)
 
 --&gt;
 
@@ -526,13 +559,13 @@ The unix command `od` (octal dump) can give information of binary files
     
 ---
 
-### Compiled modules
+## Compiled modules: Fortran and C
 
 * When Python is too slow
 * When algorithm prevents vectorization
 
 
-#### Example ``sin(x+y)``
+* Example ``sin(x+y)``
 
 ```
     &gt;&gt;&gt; import math
@@ -545,7 +578,7 @@ The unix command `od` (octal dump) can give information of binary files
 
 ---
 
-#### In Fortran
+### Fortran functions
 
 Suppose we want to evalute the function in fortran
 
@@ -570,11 +603,11 @@ Suppose we want to evalute the function in fortran
 ... subroutine hw2(r1, r2, s)
 ... double precision r1, r2, s
 ... !f2py  intent(out) s
-... s=sin(r1, r2)
+... s = sin(r1+r2)
 ... return
 ... end
 ... &#34;&#34;&#34;)
-100
+201
 
 --&gt;
 
@@ -588,7 +621,7 @@ We now use the `f2py` command to generate a dynamically linked library Python ca
 ```
 
 &lt;!--
-&gt;&gt;&gt; i = subprocess.call(&#39;f2py -c -m hw hw.f90&#39;, shell=True)
+&gt;&gt;&gt; _ = subprocess.call(&#39;f2py -c -m hw hw.f90&#39;, shell=True)
 
 --&gt;
 
@@ -608,29 +641,27 @@ In Python
 
 In fortran input and output arguments to fortran subroutines can be in any order
 
-    subroutine hw2(r1, r2, s)
-    double precision r1, r2, s
-    s=sin(r1, r2)
-    return
-    end
+```
+subroutine hw2(r1, r2, s)
+double precision r1, r2, s
+s=sin(r1+r2)
+return
+end
+```
 
----
+--
 
 The Python convention is that arguments are input and return values are output:
-``s = hw2(r1,r2)``
-
-We can supply the subroutine with information
+``s = hw2(r1,r2)`` We can supply the subroutine with information
  
 ```
-           subroutine hw2(r1, r2, s)
-           double precision r1, r2, s
-    Cf2py  intent(out) s
-           s=sin(r1, r2)
-           return
-           end
+subroutine hw2(r1, r2, s)
+double precision r1, r2, s
+!f2py  intent(out) s
+s=sin(r1+r2)
+return
+end
 ```
-
----
 
 Usage: function (hw1) and subroutine (hw2) versions
 
@@ -649,13 +680,27 @@ Usage: function (hw1) and subroutine (hw2) versions
 ```
     // hw.c
     include &lt;math.h&gt;
-    double hw3( double r1, double r2){
-    double s;
-    s=sin(r1+r2);
-    return s;}
+    double hw3(double r1, double r2){
+        double s;
+        s=sin(r1+r2);
+        return s;
+        }
 ```
+&lt;!--
+&gt;&gt;&gt; with open(&#39;hw.c&#39;, &#39;w&#39;) as hwc:
+...     n = hwc.write(&#34;&#34;&#34;\
+... // hw.c
+... #include &lt;math.h&gt;
+... double hw3(double r1, double r2){
+...     double s;
+...     s=sin(r1+r2);
+...     return s;
+... }
+... &#34;&#34;&#34;)
 
-#### Possiblities
+--&gt;
+
+Possiblities
 
 * use f2py here as well - must write a fortran style interface
 * ctypes module: compile as a shared library
@@ -664,25 +709,42 @@ Usage: function (hw1) and subroutine (hw2) versions
 Need a fortran signature file
 
 ```
-    $ cat signatures.f
+    #signatures.f90
     real*8 function hw3(r1, r2)
-    Cf2py intent(c) hw3
+    !f2py intent(c) hw3
     real*8 r1, r2
-    Cf2py intent(c) r1, r2
+    !f2py intent(c) r1, r2
     end
 ```
+&lt;!--
+&gt;&gt;&gt; with open(&#39;signatures.f90&#39;, &#39;w&#39;) as sigf:
+...     n = sigf.write(&#34;&#34;&#34;\
+... !signatures.f90
+... real*8 function hw3(r1, r2)
+... !f2py intent(c) hw3
+... real*8 r1, r2
+... !f2py intent(c) r1, r2
+... end
+... &#34;&#34;&#34;)
+
+--&gt;
 ---
 
-#### With f2y:generate header file
+* With f2y:generate header file
 
 ```
-    $ f2py -m hw_c -h hw.pyf signatures.f
+    $ f2py -m hw_c -h hw.pyf signatures.f90
     Reading fortran codes...
     Post-processing...
     Post-processing (stage 2)...
     Saving signatures to file &#34;./hw.pyf&#34;
 ```
----
+&lt;!--
+&gt;&gt;&gt; _ = subprocess.call(&#39;f2py -m hw_c -h hw.pyf signatures.f90&#39;, shell=True)
+
+--&gt;
+
+--
 
 ```
     $ cat hw.pyf
@@ -691,7 +753,7 @@ Need a fortran signature file
 
     python module hw_c ! in 
         interface  ! in :hw_c
-            function hw3(r1,r2) ! in :hw_c:signatures.f
+            function hw3(r1,r2) ! in :hw_c:signatures.f90
                 intent(c) hw3
                 real*8 intent(c) :: r1
                 real*8 intent(c) :: r2
@@ -702,11 +764,15 @@ Need a fortran signature file
 ```
 ---
 
-#### Compile
+* Compile
 
 ```
     $ f2py -c hw.pyf hw.c &gt; log
 ```
+&lt;!--
+&gt;&gt;&gt; _ = subprocess.call(&#39;f2py -c hw.pyf hw.c&#39;, shell=True)
+
+--&gt;
     
 ```
     &gt;&gt;&gt; import hw_c
@@ -719,56 +785,60 @@ Need a fortran signature file
 
 ---
 
-#### The ctypes module
+### The ctypes module
 
 ```
     $ gcc -shared -fPIC -o hw_ctypes.so hw.c
     $ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:.
 ```
-py
+
+&lt;!--
+&gt;&gt;&gt; _ = subprocess.call(&#39;gcc -shared -fPIC -o hw_ctypes.so hw.c&#39;, shell=True)
+
+--&gt;
+
 ```
-    &gt;&gt;&gt; from ctypes import CDLL, c_double
-    &gt;&gt;&gt; hw_lib = CDLL(&#39;hw_ctypes.so&#39;)
-    &gt;&gt;&gt; hw_lib.hw3.restype = c_double
-    &gt;&gt;&gt; s = hw_lib.hw3(c_double(.1), c_double(.2))
-    &gt;&gt;&gt; print(s, type(s))
-    0.2955202066613396 &lt;class &#39;float&#39;&gt;
+&gt;&gt;&gt; from ctypes import CDLL, c_double
+&gt;&gt;&gt; hw_lib = CDLL(&#39;hw_ctypes.so&#39;)
+&gt;&gt;&gt; hw_lib.hw3.restype = c_double
+&gt;&gt;&gt; s = hw_lib.hw3(c_double(.1), c_double(.2))
+&gt;&gt;&gt; print(s, type(s))
+0.2955202066613396 &lt;class &#39;float&#39;&gt;
 
 ```
 
 ---
 
-#### ctypes
+### ctypes
 
 * allows calling shared libraries
 * no need to compile
 
 ```
-    import ctypes 
-    import ctypes.util
+&gt;&gt;&gt; import ctypes 
+&gt;&gt;&gt; import ctypes.util
+
 ```
 
 ```
-    #find path to libm.so
-    path_to_libm = ctypes.util.find_library(&#39;m&#39;)
-    #load library
-    libm = ctypes.cdll.LoadLibrary(path_to_libm)
-    #explain this
-    libm.cos.argtypes = [ctypes.c_double]
-    libm.cos.restype = ctypes.c_double
+&gt;&gt;&gt; #find path to libm.so
+&gt;&gt;&gt; path_to_libm = ctypes.util.find_library(&#39;m&#39;)
+&gt;&gt;&gt; #load library
+&gt;&gt;&gt; libm = ctypes.cdll.LoadLibrary(path_to_libm)
+&gt;&gt;&gt; libm.cos.argtypes = [ctypes.c_double]
+&gt;&gt;&gt; libm.cos.restype = ctypes.c_double
+&gt;&gt;&gt; def cos_func(arg):
+...     return libm.cos(arg)
 
-    def cos_func(arg):
-        return libm.cos(arg)
 ```
 
----
+--
 
 * test
 
 ```
-    &gt;&gt;&gt; from cos_module import cos_func as cos        #doctest: +SKIP
-    &gt;&gt;&gt; print cos(1.0)                                #doctest: +SKIP
-    0.540302305868
+&gt;&gt;&gt; print(cos_func(1.0))
+0.5403023058681398
 
 ```
 
@@ -777,10 +847,10 @@ py
 
 ### cython
 
-* A Python-like language for C extensions
-* A compiler 
+* A Python-like language for C extensions, a compiler 
 
 ```
+    // cos_module.pyx
     #cdef extern from &#34;math.h&#34;:
     #    double cos(double arg)
     from libc.math cimport cos
@@ -789,8 +859,20 @@ py
         return cos(arg)
 
 ```
+&lt;!--
+&gt;&gt;&gt; with open(&#39;cos_module.pyx&#39;, &#39;w&#39;) as pyx:
+...     _ = pyx.write(&#34;&#34;&#34;\
+... #cdef extern from &#34;math.h&#34;:
+... #    double cos(double arg)
+... from libc.math cimport cos
+...
+... def cos_func(arg):
+...     return cos(arg)
+... &#34;&#34;&#34;)
 
----
+--&gt;
+
+--
 
 ```
     # setup.py
@@ -803,35 +885,49 @@ py
     )
 
 ```
----
+&lt;!--
+&gt;&gt;&gt; with open(&#39;setup.py&#39;, &#39;w&#39;) as setuppy:
+...    _ = setuppy.write(&#34;&#34;&#34;\
+... # setup.py
+... from distutils.core import setup, Extension
+... from Cython.Distutils import build_ext
+...
+... setup(
+...     cmdclass={&#39;build_ext&#39;:build_ext},
+...     ext_modules=[Extension(&#34;cos_module&#34;, [&#34;cos_module.pyx&#34;])]
+... )
+... &#34;&#34;&#34;)
 
-* build
+--&gt;
+
+--
+
+* build and use
 
 ```
     $ python setup.py build_ext --inplace
-    ...
-    $ ls
-    build cos_module.c cos_module.pyx cos_module.so setup.py
 
 ```
+&lt;!--
+&gt;&gt;&gt; _ = subprocess.call(&#39;python setup.py build_ext --inplace&#39;, shell=True)
 
-* use
+--&gt;
 
 ```
-    &gt;&gt;&gt; from cos_module import cos_func as cos     #doctest: +SKIP
-    &gt;&gt;&gt; cos(1.0)                                   #doctest: +SKIP
-    0.540302305868
+&gt;&gt;&gt; from cos_module import cos_func as cos
+&gt;&gt;&gt; cos(1.0)                              
+0.5403023058681398
 
 ```
 
 ---
 
 
-#### Summary
+### Summary
 
 * Input files in the form of triple quotes strings convenient for parameter studies
 * The `struct` module has functions for processing binary files
-* Binary files from c- and Fortran programs have differnt structure (Fortran records)
+* Binary files from c- and Fortran programs have different structure (Fortran records)
 * To speed up Python code write a function in Fortran and compile it with ``f2py`` or use the ``ctypes`` module for C code
 -
     </textarea>
